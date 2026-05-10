@@ -1,4 +1,4 @@
-import { serverSpin } from "./api.js";
+import { serverSpin, fetchLeaderboard, fetchMe } from "./api.js";
 
 const state = {
   energy: 100,
@@ -20,6 +20,30 @@ function render(message = "Mission active : lancer 5 spins.") {
   document.getElementById("message").textContent = message;
 }
 
+async function refreshLeaderboard() {
+  const root = document.getElementById("leaderboard");
+
+  try {
+    const data = await fetchLeaderboard();
+
+    if (!data.items || data.items.length === 0) {
+      root.innerHTML = "<p>Aucun joueur classé.</p>";
+      return;
+    }
+
+    root.innerHTML = `
+      <ol>
+        ${data.items.map((r) => `
+          <li><b>#${r.rank}</b> ${r.player_id} — ${r.xp} XP · ${r.credits} crédits</li>
+        `).join("")}
+      </ol>
+    `;
+  } catch (err) {
+    root.innerHTML = `<p>Classement indisponible.</p>`;
+    console.error(err);
+  }
+}
+
 btn.onclick = async () => {
   if (state.isSpinning) return;
 
@@ -28,7 +52,7 @@ btn.onclick = async () => {
   btn.textContent = "SPIN EN COURS...";
 
   try {
-    const result = await serverSpin(state);
+    const result = await serverSpin();
 
     if (!result.accepted) {
       render("Énergie insuffisante. Recharge réseau nécessaire.");
@@ -52,6 +76,8 @@ btn.onclick = async () => {
     } else {
       render(`Spin serveur ${state.spins}/5 enregistré. +${result.xp_gained} XP.`);
     }
+
+    await refreshLeaderboard();
   } catch (err) {
     console.error(err);
     render(`Erreur API : ${err.message}`);
@@ -62,4 +88,26 @@ btn.onclick = async () => {
   }
 };
 
-render();
+
+async function boot() {
+  try {
+    const me = await fetchMe();
+    if (me.authenticated) {
+      state.energy = me.energy;
+      state.xp = me.xp;
+      state.credits = me.credits;
+      state.grade = "RECRUIT";
+      render(`Connecté : ${me.player_id}`);
+    } else {
+      render("Authentification impossible.");
+    }
+  } catch (err) {
+    console.error(err);
+    render(`Erreur auth : ${err.message}`);
+  }
+
+  await refreshLeaderboard();
+}
+
+boot();
+
