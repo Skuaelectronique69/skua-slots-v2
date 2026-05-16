@@ -19,3 +19,8 @@ api/.venv/
 # Python cache
 __pycache__/
 *.pyc
+
+# Python
+api/.venv/
+__pycache__/
+*.pyc
