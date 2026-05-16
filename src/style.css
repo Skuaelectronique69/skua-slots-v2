@@ -86,3 +86,48 @@ button {
   color: #d9faff;
   font-size: 15px;
 }
+
+.economy {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(0, 20, 30, 0.55);
+  border: 1px solid rgba(255, 215, 0, 0.22);
+}
+
+.economy h2 {
+  margin-top: 0;
+  color: #ffd166;
+  font-size: 20px;
+}
+
+.economy h3 {
+  color: #d9faff;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.economy p {
+  margin: 8px 0;
+}
+
+#claim-daily {
+  margin-top: 8px;
+  width: 100%;
+}
+
+#claim-daily:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#wallet-history ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+#wallet-history li {
+  margin: 6px 0;
+  font-size: 14px;
+  color: #f2fbff;
+}

@@ -1,4 +1,5 @@
-const API_URL = "http://100.121.68.48:8011";
+const API_URL = import.meta.env.VITE_API_URL || "http://100.121.68.48:8016";
+import { getTelegramInitData, getTelegramUser, getPlayerId, getPlayerName } from "./telegram.js";
 const TOKEN_KEY = "skua_slots_token";
 const DEV_PLAYER = "DEV_OP";
 
@@ -27,8 +28,14 @@ async function apiFetch(path, options = {}) {
 }
 
 export async function devLogin() {
-  const response = await fetch(`${API_URL}/api/auth/dev-login/${DEV_PLAYER}`, {
+  const response = await fetch(`${API_URL}/api/v1/player/register`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      getTelegramInitData()
+        ? { initData: getTelegramInitData() }
+        : { telegram_id: getPlayerId(), username: getPlayerName() }
+    ),
   });
 
   if (!response.ok) {
@@ -41,12 +48,12 @@ export async function devLogin() {
 }
 
 export async function fetchMe() {
-  let response = await apiFetch("/api/me", { method: "GET" });
+  let response = await apiFetch(`/api/v1/player/profile/${getPlayerId()}`, { method: "GET" });
   let data = await response.json();
 
   if (!data.authenticated) {
     await devLogin();
-    response = await apiFetch("/api/me", { method: "GET" });
+    response = await apiFetch(`/api/v1/player/profile/${getPlayerId()}`, { method: "GET" });
     data = await response.json();
   }
 
@@ -54,9 +61,24 @@ export async function fetchMe() {
 }
 
 export async function serverSpin() {
-  const response = await apiFetch("/api/spin", {
+  const tgUser = getTelegramUser();
+
+  const payload = getTelegramInitData()
+    ? {
+        telegram_id: tgUser?.id,
+        username: getPlayerName(),
+        bet: 10,
+        initData: getTelegramInitData(),
+      }
+    : {
+        telegram_id: getPlayerId(),
+        username: getPlayerName(),
+        bet: 10,
+      };
+
+  const response = await apiFetch("/api/v1/slots/spin", {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -68,7 +90,7 @@ export async function serverSpin() {
 }
 
 export async function fetchLeaderboard() {
-  const response = await apiFetch("/api/leaderboard", {
+  const response = await apiFetch("/api/v1/economy/leaderboard", {
     method: "GET",
   });
 
@@ -77,5 +99,31 @@ export async function fetchLeaderboard() {
     throw new Error(`Leaderboard API ${response.status}: ${text}`);
   }
 
+  return await response.json();
+}
+
+export async function fetchWallet() {
+  const response = await apiFetch(`/api/v1/economy/balance/${getPlayerId()}`, { method: "GET" });
+  if (!response.ok) throw new Error(`/api/wallet failed ${response.status}`);
+  return await response.json();
+}
+
+export async function fetchWalletHistory(limit = 10, offset = 0) {
+  const response = await apiFetch(`/api/v1/economy/history/${getPlayerId()}?limit=${limit}`, {
+    method: "GET",
+  });
+  if (!response.ok) throw new Error(`/api/wallet/history failed ${response.status}`);
+  return await response.json();
+}
+
+export async function fetchStreak() {
+  const response = await apiFetch(`/api/v1/economy/balance/${getPlayerId()}`, { method: "GET" });
+  if (!response.ok) throw new Error(`/api/streak failed ${response.status}`);
+  return await response.json();
+}
+
+export async function claimStreak() {
+  const response = await apiFetch(`/api/v1/economy/daily/${getPlayerId()}`, { method: "POST" });
+  if (!response.ok) throw new Error(`/api/streak/claim failed ${response.status}`);
   return await response.json();
 }

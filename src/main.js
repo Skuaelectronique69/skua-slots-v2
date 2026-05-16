@@ -1,4 +1,5 @@
-import { serverSpin, fetchLeaderboard, fetchMe } from "./api.js";
+import { initTelegramWebApp } from "./telegram.js";
+import { serverSpin, fetchLeaderboard, fetchMe, fetchWallet, fetchWalletHistory, fetchStreak, claimStreak } from "./api.js";
 
 const state = {
   energy: 100,
@@ -20,6 +21,62 @@ function render(message = "Mission active : lancer 5 spins.") {
   document.getElementById("message").textContent = message;
 }
 
+
+function labelReason(reason) {
+  if (reason === "streak_reward") return "Daily streak";
+  if (reason === "spin_reward") return "Spin";
+  if (reason === "admin_mint") return "Dev mint";
+  if (reason === "mission_reward") return "Mission";
+  return reason;
+}
+
+async function refreshEconomy() {
+  try {
+    const [wallet, streak, history] = await Promise.all([
+      fetchWallet(),
+      fetchStreak(),
+      fetchWalletHistory(10, 0),
+    ]);
+
+    document.getElementById("sku-balance").textContent = wallet.balance_sku ?? wallet.credits ?? 0;
+    document.getElementById("streak-current").textContent = streak.current_streak ?? 0;
+    document.getElementById("streak-best").textContent = streak.best_streak ?? 0;
+
+    const claimBtn = document.getElementById("claim-daily");
+    claimBtn.disabled = streak.claimed_today;
+    claimBtn.textContent = streak.claimed_today ? "CLAIMED TODAY" : "CLAIM DAILY";
+
+    const rows = history.rows || [];
+    document.getElementById("wallet-history").innerHTML = rows.length
+      ? `<ul>${rows.map((tx) => `
+          <li><b>${tx.delta >= 0 ? "+" : ""}${tx.delta} SKU</b> — ${labelReason(tx.reason)}</li>
+        `).join("")}</ul>`
+      : "<p>Aucune transaction.</p>";
+  } catch (err) {
+    console.error(err);
+    document.getElementById("wallet-history").innerHTML = "<p>Économie indisponible.</p>";
+  }
+}
+
+document.getElementById("claim-daily")?.addEventListener("click", async () => {
+  const btn = document.getElementById("claim-daily");
+  btn.disabled = true;
+  btn.textContent = "CLAIM...";
+  try {
+    const result = await claimStreak();
+    if (result.claimed) {
+      render(`Daily claim validé : +${result.reward.sku_delta} SKU.`);
+    } else {
+      render("Daily claim déjà récupéré aujourd'hui.");
+    }
+  } catch (err) {
+    console.error(err);
+    render(`Erreur claim : ${err.message}`);
+  }
+  await refreshEconomy();
+});
+
+
 async function refreshLeaderboard() {
   const root = document.getElementById("leaderboard");
 
@@ -33,8 +90,8 @@ async function refreshLeaderboard() {
 
     root.innerHTML = `
       <ol>
-        ${data.items.map((r) => `
-          <li><b>#${r.rank}</b> ${r.player_id} — ${r.xp} XP · ${r.credits} crédits</li>
+        ${items.map((r) => `
+          <li><b>#${r.rank}</b> ${r.username || r.player_id || "player"} — ${r.score ?? r.xp ?? 0} pts · ${r.best_win ?? r.credits ?? 0} best</li>
         `).join("")}
       </ol>
     `;
@@ -78,6 +135,7 @@ btn.onclick = async () => {
     }
 
     await refreshLeaderboard();
+  await refreshEconomy();
   } catch (err) {
     console.error(err);
     render(`Erreur API : ${err.message}`);
@@ -90,6 +148,7 @@ btn.onclick = async () => {
 
 
 async function boot() {
+  initTelegramWebApp();
   try {
     const me = await fetchMe();
     if (me.authenticated) {
@@ -107,6 +166,7 @@ async function boot() {
   }
 
   await refreshLeaderboard();
+  await refreshEconomy();
 }
 
 boot();
