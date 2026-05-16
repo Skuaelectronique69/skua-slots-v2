@@ -38,8 +38,8 @@ async function refreshEconomy() {
       fetchWalletHistory(10, 0),
     ]);
 
-    document.getElementById("sku-balance").textContent = wallet.balance_sku ?? wallet.credits ?? 0;
-    document.getElementById("streak-current").textContent = streak.current_streak ?? 0;
+    document.getElementById("sku-balance").textContent = wallet.balance_sku ?? wallet.credits ?? wallet.new_balance ?? 0;
+    document.getElementById("streak-current").textContent = streak.current_streak ?? streak.streak_days ?? 0;
     document.getElementById("streak-best").textContent = streak.best_streak ?? 0;
 
     const claimBtn = document.getElementById("claim-daily");
@@ -65,7 +65,7 @@ document.getElementById("claim-daily")?.addEventListener("click", async () => {
   try {
     const result = await claimStreak();
     if (result.claimed) {
-      render(`Daily claim validé : +${result.reward.sku_delta} SKU.`);
+      render(`Daily claim validé : +${result.reward ?? 0} SKU · streak ${result.streak_days ?? 0} jour(s).`);
     } else {
       render("Daily claim déjà récupéré aujourd'hui.");
     }
