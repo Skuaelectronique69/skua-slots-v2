@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from src.core.runtime_registry import load_runtime_registry
+from src.core.persistence_status import get_persistence_status
 
 from fastapi.middleware.cors import CORSMiddleware
 from routers.spin import router as spin_router
@@ -39,3 +40,8 @@ app.include_router(streak_router, prefix="/api")
 @app.get("/api/v1/registry")
 def runtime_registry():
     return load_runtime_registry()
+
+
+@app.get("/api/v1/persistence/status")
+def persistence_status():
+    return get_persistence_status()
