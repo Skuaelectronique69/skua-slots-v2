@@ -1,0 +1,135 @@
+{
+  "name": "Registre Runtime Unique – SKUA-CORE",
+  "version": "1.0",
+  "server": {
+    "name": "SKUA-CORE",
+    "role": "serveur principal exploitation SKUA",
+    "status": "active"
+  },
+  "repositories": [
+    {
+      "name": "skua-slots-v2",
+      "path": "/home/skua/skua-games/skua-slots-v2",
+      "branch": "master",
+      "status": "clean"
+    }
+  ],
+  "fastapi": [
+    {
+      "service": "skua-slots-api",
+      "port": 8016,
+      "health": "/health",
+      "routes": [
+        "/api/v1/player/register",
+        "/api/v1/player/profile/{telegram_id}",
+        "/api/v1/economy/daily/{telegram_id}",
+        "/api/v1/economy/balance/{telegram_id}",
+        "/api/v1/economy/history/{telegram_id}",
+        "/api/v1/economy/leaderboard",
+        "/api/v1/slots/spin",
+        "/health"
+      ],
+      "status": "online"
+    },
+    {
+      "service": "skua-api",
+      "port": 8090,
+      "health": "/health",
+      "routes": [
+        "/health",
+        "/metrics",
+        "/status",
+        "/metrics/system",
+        "/api/orchestration/start",
+        "/api/orchestration/callback",
+        "/api/orchestration/review",
+        "/api/orchestration/status",
+        "/api/orchestration/missions",
+        "/api/orchestration/workers",
+        "/api/orchestration/workers/dispatch",
+        "/api/orchestration/missions/{mission_id}"
+      ],
+      "status": "ok"
+    },
+    {
+      "service": "skua-mcp-supervisor-fix",
+      "port": 8091,
+      "health": "/health",
+      "status": "ok"
+    }
+  ],
+  "frontend": [
+    {
+      "service": "skua-slots-vite",
+      "port": 5179,
+      "url": "http://100.121.68.48:5179",
+      "status": "running"
+    }
+  ],
+  "docker_services": {
+    "core": [
+      "skua-api",
+      "skua-redis",
+      "skua-rabbitmq",
+      "skua-prometheus",
+      "skua-alert-bridge",
+      "skua-node-exporter",
+      "skua-cadvisor",
+      "open-webui"
+    ],
+    "iabots": [
+      "skua-rodriguebot",
+      "skua-web3bot",
+      "skua-communitybot",
+      "skua-blockchainbot",
+      "skua-marketingbot",
+      "skua-analystebot",
+      "skua-securitybot",
+      "skua-networkbot",
+      "skua-integrationbot",
+      "skua-documentationbot",
+      "skua-domotiquebot",
+      "skua-financebot",
+      "skua-innovationbot",
+      "skua-monitoringbot",
+      "skua-iabot-15"
+    ],
+    "telegram": [
+      "skua-telegram-sav"
+    ]
+  },
+  "systemd_services": [
+    "azerty-prono.service",
+    "foxy-approver.service",
+    "foxy-executor.service",
+    "foxy-prepbot.service",
+    "foxy-sentinel.service",
+    "foxy-tchika.service",
+    "mentor-skua.service",
+    "ollama.service",
+    "openclaw.service",
+    "skua-cloudflare.service",
+    "skua-slots-api.service",
+    "skua-slots-backend.service",
+    "skua-slots-vite.service",
+    "skua-tchika-heartbeat.service"
+  ],
+  "rabbitmq": {
+    "container": "skua-rabbitmq",
+    "status": "running",
+    "queue_listing": "timeout_observed",
+    "action_required": "inspect RabbitMQ queue health separately before Phase B"
+  },
+  "redis": {
+    "container": "skua-redis",
+    "status": "pong",
+    "critical_keys": [
+      "skua:watchdog:leader"
+    ]
+  },
+  "phase": {
+    "current": "PHASE A – Vérité Runtime",
+    "status": "partial_locked",
+    "next": "Expose /api/v1/registry then sync Notion"
+  }
+}

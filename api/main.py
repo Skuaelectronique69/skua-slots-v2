@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from src.core.runtime_registry import load_runtime_registry
+
 from fastapi.middleware.cors import CORSMiddleware
 from routers.spin import router as spin_router
 from routers.daily import router as daily_router
@@ -32,3 +34,8 @@ app.include_router(leaderboard_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(wallet_router, prefix="/api")
 app.include_router(streak_router, prefix="/api")
+
+
+@app.get("/api/v1/registry")
+def runtime_registry():
+    return load_runtime_registry()
