@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
 from db.database import get_conn
 from datetime import datetime, timedelta
+from services.auth_service import require_player_id
 
 router = APIRouter(tags=["daily"])
 
@@ -8,7 +9,10 @@ DAILY_ENERGY = 100
 DAILY_CREDITS = 50
 
 @router.post("/daily/claim/{player_id}")
-def claim_daily(player_id: str):
+def claim_daily(player_id: str, authorization: str = Header(default="")):
+    authenticated_player_id = require_player_id(authorization)
+    if authenticated_player_id != player_id:
+        raise HTTPException(status_code=403, detail="player identity mismatch")
     with get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM players WHERE player_id = ?",

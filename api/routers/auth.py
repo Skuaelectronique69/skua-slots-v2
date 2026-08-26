@@ -1,37 +1,40 @@
-from fastapi import APIRouter, Header
+import os
+
+from fastapi import APIRouter, Header, HTTPException
+from pydantic import BaseModel
+
 from db.database import get_conn
 from services.player_store import get_or_create_player
-from uuid import uuid4
-from datetime import datetime, timedelta
+from services.auth_service import create_session, dev_auth_enabled, validate_telegram_init_data
+from datetime import datetime
 
 router = APIRouter(tags=["auth"])
 
+
+class TelegramLoginRequest(BaseModel):
+    init_data: str
+
+
+@router.post("/auth/telegram")
+def telegram_login(payload: TelegramLoginRequest):
+    try:
+        user = validate_telegram_init_data(
+            payload.init_data,
+            os.getenv("TELEGRAM_BOT_TOKEN", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    player_id = str(user["id"])
+    get_or_create_player(player_id)
+    return create_session(player_id)
+
 @router.post("/auth/dev-login/{player_id}")
 def dev_login(player_id: str):
+    if not dev_auth_enabled():
+        raise HTTPException(status_code=404, detail="not found")
     get_or_create_player(player_id)
-    token = str(uuid4())
-    expires_at = (datetime.utcnow() + timedelta(days=7)).isoformat()
-
-    with get_conn() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            token TEXT PRIMARY KEY,
-            player_id TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            expires_at TEXT NOT NULL
-        )
-        """)
-        conn.execute(
-            "INSERT INTO sessions (token, player_id, expires_at) VALUES (?, ?, ?)",
-            (token, player_id, expires_at)
-        )
-
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "player_id": player_id,
-        "expires_at": expires_at
-    }
+    return create_session(player_id)
 
 @router.get("/me")
 def me(authorization: str = Header(default="")):

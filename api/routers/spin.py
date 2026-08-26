@@ -3,7 +3,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Header
 from services.game import spin
 from services.player_store import get_or_create_player, update_player, log_spin
-from services.auth_service import player_id_from_authorization
+from services.auth_service import require_player_id
 from services.wallet_service import apply_wallet_delta
 
 router = APIRouter(tags=["spin"])
@@ -13,10 +13,7 @@ class SpinRequest(BaseModel):
 
 @router.post("/spin")
 def post_spin(payload: SpinRequest, authorization: str = Header(default="")):
-    player_id = player_id_from_authorization(authorization)
-
-    if not player_id:
-        player_id = payload.player_id or "DEV_OP"
+    player_id = require_player_id(authorization)
 
     spin_id = str(uuid4())
     player = get_or_create_player(player_id)

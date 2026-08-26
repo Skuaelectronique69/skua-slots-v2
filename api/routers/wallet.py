@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Header, Query
-from services.auth_service import player_id_from_authorization
+from fastapi import APIRouter, Header, HTTPException, Query
+from services.auth_service import dev_auth_enabled, require_player_id
 from services.wallet_service import get_wallet_snapshot, apply_wallet_delta
 from db.database import get_conn
 from uuid import uuid4
@@ -8,7 +8,7 @@ router = APIRouter(tags=["wallet"])
 
 @router.get("/wallet")
 def wallet(authorization: str = Header(default="")):
-    player_id = player_id_from_authorization(authorization) or "DEV_OP"
+    player_id = require_player_id(authorization)
     return get_wallet_snapshot(player_id)
 
 @router.get("/wallet/history")
@@ -17,7 +17,7 @@ def wallet_history(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0)
 ):
-    player_id = player_id_from_authorization(authorization) or "DEV_OP"
+    player_id = require_player_id(authorization)
 
     with get_conn() as conn:
         rows = conn.execute(
@@ -40,7 +40,9 @@ def wallet_history(
 
 @router.post("/wallet/dev-mint")
 def wallet_dev_mint(authorization: str = Header(default="")):
-    player_id = player_id_from_authorization(authorization) or "DEV_OP"
+    if not dev_auth_enabled():
+        raise HTTPException(status_code=404, detail="not found")
+    player_id = require_player_id(authorization)
     ref = f"dev-mint:{uuid4()}"
     return apply_wallet_delta(
         player_id=player_id,

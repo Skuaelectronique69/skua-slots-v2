@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from src.core.runtime_registry import load_runtime_registry
 from src.core.persistence_status import get_persistence_status
@@ -13,9 +15,18 @@ from db.database import init_db
 
 app = FastAPI(title="SkuaSlots API", version="1.3.0")
 
+cors_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "SKUA_SLOTS_CORS_ORIGINS",
+        "http://127.0.0.1:5179,http://localhost:5179",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
