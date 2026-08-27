@@ -136,7 +136,7 @@ async function refreshLeaderboard() {
 
     root.innerHTML = `
       <ol>
-        ${items.map((r) => `
+        ${data.items.map((r) => `
           <li><b>#${r.rank}</b> ${r.username || r.player_id || "player"} — ${r.score ?? r.xp ?? 0} pts · ${r.best_win ?? r.credits ?? 0} best</li>
         `).join("")}
       </ol>
