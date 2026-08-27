@@ -8,6 +8,7 @@ const state = {
   grade: "RECRUIT",
   spins: 0,
   isSpinning: false,
+  authenticated: false,
 };
 
 const slots = document.querySelectorAll("#slots div");
@@ -19,6 +20,43 @@ function render(message = "Mission active : lancer 5 spins.") {
   document.getElementById("credits").textContent = state.credits;
   document.getElementById("grade").textContent = state.grade;
   document.getElementById("message").textContent = message;
+}
+
+function setAuthenticatedControls(enabled) {
+  btn.disabled = !enabled;
+  const claimBtn = document.getElementById("claim-daily");
+  if (claimBtn) claimBtn.disabled = !enabled;
+}
+
+function authenticationMessage(error) {
+  if (error?.code === "TELEGRAM_UNAVAILABLE") {
+    return "Ouvrez SkuaSlots depuis Telegram pour vous authentifier.";
+  }
+  if (error?.code === "TELEGRAM_INIT_DATA_MISSING") {
+    return "Telegram n'a fourni aucune donnée d'authentification.";
+  }
+  if (error?.code === "AUTHENTICATION_REFUSED") {
+    return "Authentification Telegram refusée.";
+  }
+  if (error?.code === "SESSION_EXPIRED") {
+    return "Session expirée. Rouvrez la Mini App depuis Telegram.";
+  }
+  if (error?.code === "NETWORK_ERROR") {
+    return "Réseau indisponible. Réessayez depuis Telegram.";
+  }
+  return null;
+}
+
+function handleAuthenticationError(error) {
+  const message = authenticationMessage(error);
+  if (!message) return false;
+
+  if (error.code !== "NETWORK_ERROR") {
+    state.authenticated = false;
+    setAuthenticatedControls(false);
+  }
+  render(message);
+  return true;
 }
 
 
@@ -53,12 +91,15 @@ async function refreshEconomy() {
         `).join("")}</ul>`
       : "<p>Aucune transaction.</p>";
   } catch (err) {
+    if (handleAuthenticationError(err)) return;
     console.error(err);
     document.getElementById("wallet-history").innerHTML = "<p>Économie indisponible.</p>";
   }
 }
 
 document.getElementById("claim-daily")?.addEventListener("click", async () => {
+  if (!state.authenticated) return;
+
   const btn = document.getElementById("claim-daily");
   btn.disabled = true;
   btn.textContent = "CLAIM...";
@@ -70,6 +111,11 @@ document.getElementById("claim-daily")?.addEventListener("click", async () => {
       render("Daily claim déjà récupéré aujourd'hui.");
     }
   } catch (err) {
+    if (handleAuthenticationError(err)) {
+      btn.disabled = !state.authenticated;
+      btn.textContent = "CLAIM DAILY";
+      return;
+    }
     console.error(err);
     render(`Erreur claim : ${err.message}`);
   }
@@ -102,7 +148,7 @@ async function refreshLeaderboard() {
 }
 
 btn.onclick = async () => {
-  if (state.isSpinning) return;
+  if (state.isSpinning || !state.authenticated) return;
 
   state.isSpinning = true;
   btn.disabled = true;
@@ -137,11 +183,12 @@ btn.onclick = async () => {
     await refreshLeaderboard();
   await refreshEconomy();
   } catch (err) {
+    if (handleAuthenticationError(err)) return;
     console.error(err);
     render(`Erreur API : ${err.message}`);
   } finally {
     state.isSpinning = false;
-    btn.disabled = false;
+    btn.disabled = !state.authenticated;
     btn.textContent = "SPIN · 10 ENERGY";
   }
 };
@@ -149,25 +196,26 @@ btn.onclick = async () => {
 
 async function boot() {
   initTelegramWebApp();
+  setAuthenticatedControls(false);
+
   try {
     const me = await fetchMe();
-    if (me.authenticated) {
-      state.energy = me.energy;
-      state.xp = me.xp;
-      state.credits = me.credits;
-      state.grade = "RECRUIT";
-      render(`Connecté : ${me.player_id}`);
-    } else {
-      render("Authentification impossible.");
-    }
+    state.authenticated = true;
+    state.energy = me.energy;
+    state.xp = me.xp;
+    state.credits = me.credits;
+    state.grade = "RECRUIT";
+    setAuthenticatedControls(true);
+    render("Connecté via Telegram.");
+    await refreshEconomy();
   } catch (err) {
-    console.error(err);
-    render(`Erreur auth : ${err.message}`);
+    if (!handleAuthenticationError(err)) {
+      console.error(err);
+      render("Authentification indisponible.");
+    }
   }
 
   await refreshLeaderboard();
-  await refreshEconomy();
 }
 
 boot();
-

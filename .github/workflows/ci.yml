@@ -40,5 +40,7 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Run frontend authentication tests
+        run: npm test
       - name: Build frontend
         run: npm run build
