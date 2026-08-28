@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "test": "node tests/frontend_auth.test.js",
     "build": "vite build",
     "preview": "vite preview"
   },

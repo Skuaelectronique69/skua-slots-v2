@@ -1,129 +1,253 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://100.121.68.48:8016";
-import { getTelegramInitData, getTelegramUser, getPlayerId, getPlayerName } from "./telegram.js";
-const TOKEN_KEY = "skua_slots_token";
-const DEV_PLAYER = "DEV_OP";
+import { getTelegramInitData, getTelegramWebApp } from "./telegram.js";
 
-function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+const API_URL = (import.meta.env?.VITE_API_URL || "").replace(/\/$/, "");
+const SESSION_KEY = "skua_slots_session";
+
+let authSession = null;
+
+export class ApiClientError extends Error {
+  constructor(code, message, status = null) {
+    super(message);
+    this.name = "ApiClientError";
+    this.code = code;
+    this.status = status;
+  }
 }
 
-function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
+function getSessionStorage() {
+  try {
+    return globalThis.sessionStorage || globalThis.window?.sessionStorage || null;
+  } catch {
+    return null;
+  }
 }
 
-async function apiFetch(path, options = {}) {
-  const token = getToken();
+function isExpired(expiresAt) {
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(expiresAt);
+  const timestamp = Date.parse(hasTimezone ? expiresAt : expiresAt + "Z");
+  return !Number.isFinite(timestamp) || timestamp <= Date.now();
+}
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      "Accept": "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
+function readAuthSession() {
+  if (authSession && !isExpired(authSession.expiresAt)) {
+    return authSession;
+  }
+
+  authSession = null;
+  const storage = getSessionStorage();
+  const stored = storage?.getItem(SESSION_KEY);
+  if (!stored) return null;
+
+  try {
+    const parsed = JSON.parse(stored);
+    if (
+      typeof parsed.accessToken !== "string"
+      || !parsed.accessToken
+      || typeof parsed.expiresAt !== "string"
+      || isExpired(parsed.expiresAt)
+    ) {
+      storage.removeItem(SESSION_KEY);
+      return null;
+    }
+    authSession = parsed;
+    return authSession;
+  } catch {
+    storage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function writeAuthSession(payload) {
+  const expiresAt = payload?.expires_at;
+  if (
+    typeof payload?.access_token !== "string"
+    || !payload.access_token
+    || typeof expiresAt !== "string"
+    || isExpired(expiresAt)
+  ) {
+    throw new ApiClientError(
+      "AUTHENTICATION_REFUSED",
+      "Telegram authentication returned an invalid session.",
+    );
+  }
+
+  authSession = {
+    accessToken: payload.access_token,
+    expiresAt,
+  };
+  getSessionStorage()?.setItem(SESSION_KEY, JSON.stringify(authSession));
+}
+
+export function clearAuthSession() {
+  authSession = null;
+  getSessionStorage()?.removeItem(SESSION_KEY);
+}
+
+async function fetchResponse(path, options = {}, requiresAuth = false) {
+  const headers = {
+    Accept: "application/json",
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...(options.headers || {}),
+  };
+
+  if (requiresAuth) {
+    const session = readAuthSession();
+    if (!session) {
+      throw new ApiClientError(
+        "SESSION_EXPIRED",
+        "Telegram session is missing or expired.",
+        401,
+      );
+    }
+    headers.Authorization = "Bearer " + session.accessToken;
+  }
+
+  let response;
+  try {
+    response = await fetch(API_URL + path, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiClientError(
+      "NETWORK_ERROR",
+      "The SkuaSlots API is unreachable.",
+    );
+  }
+
+  if (requiresAuth && response.status === 401) {
+    clearAuthSession();
+    throw new ApiClientError(
+      "SESSION_EXPIRED",
+      "Telegram session is missing or expired.",
+      401,
+    );
+  }
+
+  if (!response.ok) {
+    throw new ApiClientError(
+      "API_ERROR",
+      "The SkuaSlots API refused the request.",
+      response.status,
+    );
+  }
 
   return response;
 }
 
-export async function devLogin() {
-  const response = await fetch(`${API_URL}/api/v1/player/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      getTelegramInitData()
-        ? { initData: getTelegramInitData() }
-        : { telegram_id: getPlayerId(), username: getPlayerName() }
-    ),
-  });
+async function responseJson(response, errorCode = "API_ERROR") {
+  try {
+    return await response.json();
+  } catch {
+    throw new ApiClientError(errorCode, "The SkuaSlots API returned an invalid response.");
+  }
+}
 
-  if (!response.ok) {
-    throw new Error(`dev-login failed: ${response.status}`);
+export async function authenticateWithTelegram() {
+  if (!getTelegramWebApp()) {
+    clearAuthSession();
+    throw new ApiClientError(
+      "TELEGRAM_UNAVAILABLE",
+      "Telegram WebApp is unavailable.",
+    );
   }
 
-  const data = await response.json();
-  setToken(data.access_token);
-  return data;
+  const initData = getTelegramInitData().trim();
+  if (!initData) {
+    clearAuthSession();
+    throw new ApiClientError(
+      "TELEGRAM_INIT_DATA_MISSING",
+      "Telegram initData is missing.",
+    );
+  }
+
+  clearAuthSession();
+
+  let response;
+  try {
+    response = await fetch(API_URL + "/api/auth/telegram", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ init_data: initData }),
+    });
+  } catch {
+    clearAuthSession();
+    throw new ApiClientError(
+      "NETWORK_ERROR",
+      "The SkuaSlots API is unreachable.",
+    );
+  }
+
+  if (!response.ok) {
+    clearAuthSession();
+    throw new ApiClientError(
+      "AUTHENTICATION_REFUSED",
+      "Telegram authentication was refused.",
+      response.status,
+    );
+  }
+
+  const payload = await responseJson(response, "AUTHENTICATION_REFUSED");
+  writeAuthSession(payload);
+  return payload;
+}
+
+async function ensureAuthSession() {
+  if (!readAuthSession()) {
+    await authenticateWithTelegram();
+  }
+}
+
+async function protectedJson(path, options = {}) {
+  await ensureAuthSession();
+  const response = await fetchResponse(path, options, true);
+  return responseJson(response);
 }
 
 export async function fetchMe() {
-  let response = await apiFetch(`/api/v1/player/profile/${getPlayerId()}`, { method: "GET" });
-  let data = await response.json();
-
+  const data = await protectedJson("/api/me", { method: "GET" });
   if (!data.authenticated) {
-    await devLogin();
-    response = await apiFetch(`/api/v1/player/profile/${getPlayerId()}`, { method: "GET" });
-    data = await response.json();
+    clearAuthSession();
+    throw new ApiClientError(
+      data.reason === "expired_token" ? "SESSION_EXPIRED" : "AUTHENTICATION_REFUSED",
+      "Telegram authentication was refused.",
+      401,
+    );
   }
-
   return data;
 }
 
 export async function serverSpin() {
-  const tgUser = getTelegramUser();
-
-  const payload = getTelegramInitData()
-    ? {
-        telegram_id: tgUser?.id,
-        username: getPlayerName(),
-        bet: 10,
-        initData: getTelegramInitData(),
-      }
-    : {
-        telegram_id: getPlayerId(),
-        username: getPlayerName(),
-        bet: 10,
-      };
-
-  const response = await apiFetch("/api/v1/slots/spin", {
+  return protectedJson("/api/spin", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({}),
   });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Spin API ${response.status}: ${text}`);
-  }
-
-  return await response.json();
 }
 
 export async function fetchLeaderboard() {
-  const response = await apiFetch("/api/v1/economy/leaderboard", {
-    method: "GET",
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Leaderboard API ${response.status}: ${text}`);
-  }
-
-  return await response.json();
+  const response = await fetchResponse("/api/leaderboard", { method: "GET" });
+  return responseJson(response);
 }
 
 export async function fetchWallet() {
-  const response = await apiFetch(`/api/v1/economy/balance/${getPlayerId()}`, { method: "GET" });
-  if (!response.ok) throw new Error(`/api/wallet failed ${response.status}`);
-  return await response.json();
+  return protectedJson("/api/wallet", { method: "GET" });
 }
 
 export async function fetchWalletHistory(limit = 10, offset = 0) {
-  const response = await apiFetch(`/api/v1/economy/history/${getPlayerId()}?limit=${limit}`, {
-    method: "GET",
-  });
-  if (!response.ok) throw new Error(`/api/wallet/history failed ${response.status}`);
-  return await response.json();
+  return protectedJson(
+    "/api/wallet/history?limit=" + encodeURIComponent(limit)
+      + "&offset=" + encodeURIComponent(offset),
+    { method: "GET" },
+  );
 }
 
 export async function fetchStreak() {
-  const response = await apiFetch(`/api/v1/economy/balance/${getPlayerId()}`, { method: "GET" });
-  if (!response.ok) throw new Error(`/api/streak failed ${response.status}`);
-  return await response.json();
+  return protectedJson("/api/streak", { method: "GET" });
 }
 
 export async function claimStreak() {
-  const response = await apiFetch(`/api/v1/economy/daily/${getPlayerId()}`, { method: "POST" });
-  if (!response.ok) throw new Error(`/api/streak/claim failed ${response.status}`);
-  return await response.json();
+  return protectedJson("/api/streak/claim", { method: "POST" });
 }
